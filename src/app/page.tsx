@@ -1,6 +1,7 @@
 "use client";
 
-import { tcasDatabase } from "@/data/tcasDatabase";
+//import { tcasDatabase } from "@/data/tcasDatabase";
+import tcasDatabase from "@/data/tcasDatabase_fixed.json";
 import { useState } from "react";
 
 import {
