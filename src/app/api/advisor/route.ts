@@ -62,7 +62,8 @@ ${matchedText}
       "chance": 20,
       "reason": "เหตุผล",
       "minScore": 72.5,
-      "maxScore": 81.2
+      "maxScore": 81.2,
+      "year": 2568
     },
     {
       "type": "target",
@@ -70,7 +71,8 @@ ${matchedText}
       "chance": 50,
       "reason": "เหตุผล",
       "minScore": 72.45,
-      "maxScore": 81.20
+      "maxScore": 81.20,
+      "year": 2568
     },
     {
       "type": "safe",
@@ -78,7 +80,8 @@ ${matchedText}
       "chance": 75,
       "reason": "เหตุผล",
       "minScore": 72.45,
-      "maxScore": 81.20
+      "maxScore": 81.20,
+      "year": 2568
     }
   ],
   "prioritySubjects": ["วิชา 1", "วิชา 2"],

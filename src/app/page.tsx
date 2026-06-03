@@ -407,7 +407,7 @@ function UniversityCard({ item }: { item: UniversityMatch }) {
       
       {item.minScore !== undefined && item.minScore !== null && (
         <div className="mt-2 text-sm text-slate-300">
-          คะแนนต่ำสุดย้อนหลัง:
+          คะแนนต่ำสุดปี {item.year}:
           <span className="ml-2 font-bold text-cyan-300">
             {item.minScore.toFixed(2)}
             </span>
