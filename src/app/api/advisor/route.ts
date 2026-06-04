@@ -20,18 +20,18 @@ export async function POST(req: Request) {
   try {
     const data = await req.json();
 
-    const matchedText =
-      data.matchedPrograms
-        ?.slice(0, 15)
-        .map(
-          (p: any, index: number) =>
-            `${index + 1}. ${p.institution || "-"} | ${p.faculty || "-"} | ${
-              p.program || p.major || "-"
-            } | min_score:${p.min_score ?? "-"} | max_score:${
-              p.max_score ?? "-"
-            } | year:${p.year ?? "-"}`
-        )
-        .join("\n") || "ไม่พบข้อมูลย้อนหลังที่ตรงกัน";
+const matchedText =
+  data.matchedPrograms
+    ?.slice(0, 10)
+    .map(
+      (p: any, index: number) =>
+        `${index + 1}. type:${p.matchType || "-"} | ${p.institution || "-"} | ${p.faculty || "-"} | ${
+          p.program || p.major || "-"
+        } | min_score:${p.min_score ?? "-"} | max_score:${
+          p.max_score ?? "-"
+        } | year:${p.year ?? "-"}`
+    )
+    .join("\n") || "ไม่พบข้อมูลย้อนหลังที่ตรงกัน";
 
     const prompt = `
 คุณคือ AI แนะแนว TCAS สำหรับนักเรียนไทย
@@ -49,7 +49,34 @@ TPAT/A-Level: ${data.score}
 ข้อมูล TCAS ย้อนหลังที่ค้นเจอ:
 ${matchedText}
 
-ให้วิเคราะห์โดยอิงข้อมูล TCAS ย้อนหลังด้านบน และตอบ JSON ตาม schema นี้เท่านั้น:
+กติกาสำคัญ:
+1. ใช้เฉพาะรายการจากข้อมูล TCAS ย้อนหลังที่ค้นเจอเท่านั้น
+2. ห้ามสร้างชื่อมหาวิทยาลัย คณะ หลักสูตร หรือคะแนนเอง
+3. ให้ใช้ type ตาม matchType ที่ส่งมาเท่านั้น:
+   - dream = หลักสูตรเป้าหมายสูงสุดของผู้เรียน
+   - target = หลักสูตรคณะเดียวกัน คะแนนต่ำสุดรองลงมา
+   - safe = หลักสูตรคณะเดียวกัน คะแนนต่ำลงมาอีก
+4. ชื่อใน universityMatches ต้องประกอบจาก institution + faculty + program
+5. minScore, maxScore, year ต้องดึงจาก min_score, max_score, year โดยตรง
+6. ถ้ามีหลายรายการ ให้แสดงทุกรายการที่ส่งมา ไม่ต้องจำกัดแค่ 3 รายการ
+
+ให้วิเคราะห์โดยอิงข้อมูล TCAS ย้อนหลังด้านบนเท่านั้น
+
+กติกาสำคัญ:
+1. ห้ามสร้างชื่อมหาวิทยาลัยใหม่
+2. ห้ามใช้คำทั่วไป เช่น
+   - มหาวิทยาลัยรัฐชั้นนำ
+   - มหาวิทยาลัยทางเลือก
+   - มหาวิทยาลัยภูมิภาค
+3. ต้องใช้ชื่อ institution + faculty + program จาก matchedPrograms เท่านั้น
+4. dream ต้องใช้รายการ type:dream
+5. target ต้องใช้รายการ type:target
+6. safe ต้องใช้รายการ type:safe
+7. ให้คืนค่าทุกรายการที่ส่งมา
+8. ห้ามดัดแปลงชื่อคณะหรือมหาวิทยาลัย
+9. minScore maxScore year ต้องตรงกับข้อมูลเดิม
+
+ตอบ JSON ตาม schema นี้เท่านั้น:
 
 {
   "admissionChance": 50,
@@ -58,7 +85,7 @@ ${matchedText}
   "universityMatches": [
     {
       "type": "dream",
-      "name": "ชื่อคณะ/มหาวิทยาลัย",
+      "name": "จุฬาลงกรณ์มหาวิทยาลัย | คณะวิศวกรรมศาสตร์ | วิศวกรรมคอมพิวเตอร์",
       "chance": 20,
       "reason": "เหตุผล",
       "minScore": 72.5,
@@ -67,7 +94,7 @@ ${matchedText}
     },
     {
       "type": "target",
-      "name": "ชื่อคณะ/มหาวิทยาลัย",
+      "name": "จุฬาลงกรณ์มหาวิทยาลัย | คณะวิศวกรรมศาสตร์ | วิศวกรรมคอมพิวเตอร์",
       "chance": 50,
       "reason": "เหตุผล",
       "minScore": 72.45,
@@ -76,7 +103,7 @@ ${matchedText}
     },
     {
       "type": "safe",
-      "name": "ชื่อคณะ/มหาวิทยาลัย",
+      "name": "จุฬาลงกรณ์มหาวิทยาลัย | คณะวิศวกรรมศาสตร์ | วิศวกรรมคอมพิวเตอร์",
       "chance": 75,
       "reason": "เหตุผล",
       "minScore": 72.45,
@@ -135,28 +162,44 @@ ${matchedText}
         summary:
           raw ||
           "AI ตอบกลับไม่เป็น JSON แต่ระบบยังรับข้อมูลได้ กรุณากดวิเคราะห์ใหม่",
-        universityMatches: [
-          {
-            type: "dream",
-            name: data.university
-              ? `${data.major} ${data.university}`
-              : `${data.major} มหาวิทยาลัยชั้นนำ`,
-            chance: 20,
-            reason: "ยังต้องเพิ่มคะแนนหลักให้สูงขึ้นจากข้อมูลย้อนหลัง",
-          },
-          {
-            type: "target",
-            name: `${data.major} มหาวิทยาลัยกลุ่มเป้าหมาย`,
-            chance: 50,
-            reason: "มีโอกาสปานกลางหากยกระดับคะแนนสอบ",
-          },
-          {
-            type: "safe",
-            name: "สาขาใกล้เคียงหรือมหาวิทยาลัยทางเลือก",
-            chance: 75,
-            reason: "เหมาะสำหรับใช้เป็นแผนสำรอง",
-          },
-        ],
+
+        universityMatches:
+  data.matchedPrograms?.map((p: any) => ({
+    type: p.matchType || "target",
+
+    name:
+      `${p.institution || ""} | ` +
+      `${p.faculty || ""} | ` +
+      `${p.program || p.major || ""}`,
+
+    chance:
+      p.matchType === "dream"
+        ? 20
+        : p.matchType === "target"
+        ? 50
+        : 75,
+
+    reason:
+      `อ้างอิงคะแนนต่ำสุดปี ${p.year}: ${p.min_score ?? "-"} ` +
+      `และคะแนนสูงสุด: ${p.max_score ?? "-"}`,
+
+    minScore:
+      p.min_score !== undefined
+        ? Number(p.min_score)
+        : undefined,
+
+    maxScore:
+      p.max_score !== undefined
+        ? Number(p.max_score)
+        : undefined,
+
+    year:
+      p.year !== undefined
+        ? Number(p.year)
+        : undefined,
+  })) || [],
+
+        
         prioritySubjects: [data.weakSubjects || "TGAT", "A-Level"],
         todayPlan: [
           "ทบทวนวิชาที่อ่อน 90 นาที",

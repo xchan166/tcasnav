@@ -1,8 +1,23 @@
 "use client";
 
-//import { tcasDatabase } from "@/data/tcasDatabase";
-import tcasDatabase from "@/data/tcasDatabase_fixed.json";
+import rawTcasDatabase from "@/data/tcasDatabase_fixed.json";
 import { useState } from "react";
+
+type TCASItem = {
+  year?: number | string;
+  institution?: string;
+  campus?: string;
+  curriculum_id?: string;
+  faculty?: string;
+  program?: string;
+  major?: string;
+  project?: string | null;
+  min_score?: number;
+  max_score?: number;
+  search_text?: string;
+};
+
+const tcasDatabase = rawTcasDatabase as TCASItem[];
 
 import {
   RadarChart,
@@ -81,37 +96,74 @@ function levenshtein(a: string, b: string) {
   return matrix[a.length][b.length];
 }
 
-function getSearchKeywords(input: string) {
-  const q = normalizeText(input);
-  if (!q) return [];
+function getSearchKeywords(major: string): string[] {
+  const normalized = major.trim().toLowerCase();
 
-  for (const [canonical, aliases] of Object.entries(synonymMap)) {
-    const normalizedAliases = aliases.map(normalizeText);
+  const keywordMap: Record<string, string[]> = {
+    "วิศวะ": [
+      "วิศวกรรม",
+      "วิศวกรรมศาสตร์",
+      "engineering"
+    ],
 
-    if (
-      normalizedAliases.some(
-        (alias) =>
-          q.includes(alias) ||
-          alias.includes(q) ||
-          levenshtein(q, alias) <= 2
-      )
-    ) {
-      return [canonical, ...aliases];
+    "คอม": [
+      "คอมพิวเตอร์",
+      "computer",
+      "computer engineering",
+      "computer science"
+    ],
+
+    "ไฟฟ้า": [
+      "ไฟฟ้า",
+      "electrical"
+    ],
+
+    "โยธา": [
+      "โยธา",
+      "civil"
+    ],
+
+    "เครื่องกล": [
+      "เครื่องกล",
+      "mechanical"
+    ],
+
+    "จิตวิทยา": [
+      "จิตวิทยา",
+      "psychology"
+    ],
+
+    "บัญชี": [
+      "บัญชี",
+      "accounting"
+    ],
+
+    "บริหาร": [
+      "บริหารธุรกิจ",
+      "business administration"
+    ]
+  };
+
+  for (const key in keywordMap) {
+    if (normalized.includes(key)) {
+      return keywordMap[key];
     }
   }
 
-  return [input, q];
+  return [major];
 }
 
 function textIncludesKeyword(text: string | null | undefined, keywords: string[]) {
   const normalizedText = normalizeText(text || "");
 
+  if (!normalizedText) return false;
+
   return keywords.some((kw) => {
     const normalizedKeyword = normalizeText(kw);
-    return (
-      normalizedText.includes(normalizedKeyword) ||
-      normalizedKeyword.includes(normalizedText)
-    );
+
+    if (!normalizedKeyword) return false;
+
+    return normalizedText.includes(normalizedKeyword);
   });
 }
 
@@ -136,6 +188,33 @@ function calculateRelevance(
   if (item.max_score !== null && item.max_score !== undefined) score += 5;
 
   return score;
+}
+
+function isStrictFacultyMatch(item: TCASItem, majorInput: string) {
+  const q = normalizeText(majorInput);
+  const faculty = normalizeText(item.faculty || "");
+  const program = normalizeText(item.program || "");
+  const major = normalizeText(item.major || "");
+  const searchText = normalizeText(item.search_text || "");
+
+  if (q.includes("วิศวะ") || q.includes("วิศวกรรม")) {
+    return (
+      faculty.includes("วิศวกรรม") ||
+      program.includes("วิศวกรรม") ||
+      major.includes("วิศวกรรม") ||
+      searchText.includes("วิศวกรรมศาสตร์")
+    );
+  }
+
+  if (q.includes("วิทยา") || q.includes("วิทยาศาสตร์")) {
+    return (
+      faculty.includes("วิทยาศาสตร์") ||
+      program.includes("วิทยาศาสตร์") ||
+      major.includes("วิทยาศาสตร์")
+    );
+  }
+
+  return true;
 }
 
 export default function Home() {
@@ -164,30 +243,97 @@ export default function Home() {
       );
       console.log("Latest TCAS Year:", latestYear);
 
-      const matchedPrograms = tcasDatabase
+      const basePrograms = tcasDatabase
+  .filter((item: TCASItem) => {
+    if (searchKeywords.length === 0) return false;
+    if (Number(item.year) !== latestYear) return false;
 
-      .filter((item: any) => {
-        if (searchKeywords.length === 0) return false;
+    return (
+      textIncludesKeyword(item.faculty || "", searchKeywords) ||
+      textIncludesKeyword(item.program || "", searchKeywords) ||
+      textIncludesKeyword(item.major || "", searchKeywords) ||
+      textIncludesKeyword(item.search_text || "", searchKeywords)
+    );
+  })
+  .filter((item: TCASItem) => Number(item.min_score) > 0)
+  .filter((item: TCASItem) => isStrictFacultyMatch(item, major));
 
-        // เอาเฉพาะปีล่าสุด
-        if (Number(item.year) !== latestYear) return false;
-        
-        return (
-          textIncludesKeyword(item.program, searchKeywords) ||
-          textIncludesKeyword(item.faculty, searchKeywords) ||
-          textIncludesKeyword(item.major, searchKeywords) ||
-          textIncludesKeyword(item.curriculum_id, searchKeywords)
-        );
-      })
-      .sort(
-        (a: any, b: any) =>
-          calculateRelevance(b, searchKeywords, university) -
-        calculateRelevance(a, searchKeywords, university)
+
+const targetUniversity = normalizeText(university);
+
+const dreamProgram =
+  basePrograms.find((item: TCASItem) =>
+    targetUniversity
+      ? normalizeText(item.institution || "").includes(targetUniversity)
+      : false
+  ) || basePrograms[0];
+
+const fixedFaculty = normalizeText(dreamProgram?.faculty || "");
+
+const sameFacultyPrograms = tcasDatabase
+  .filter((item: TCASItem) => Number(item.year) === latestYear)
+  .filter((item: TCASItem) => Number(item.min_score) > 0)
+  .filter((item: TCASItem) => isStrictFacultyMatch(item, major))
+  .filter((item: TCASItem) => {
+    const itemFaculty = normalizeText(item.faculty || "");
+    const itemProgram = normalizeText(item.program || "");
+    const itemMajor = normalizeText(item.major || "");
+    const itemSearchText = normalizeText(item.search_text || "");
+
+    const isSameFaculty =
+      itemFaculty === fixedFaculty ||
+      itemFaculty.includes(fixedFaculty) ||
+      fixedFaculty.includes(itemFaculty);
+
+    const isEngineeringGroup =
+      normalizeText(major).includes("วิศว") &&
+      (
+        itemFaculty.includes("วิศวกรรม") ||
+        itemProgram.includes("วิศวกรรม") ||
+        itemMajor.includes("วิศวกรรม") ||
+        itemSearchText.includes("วิศวกรรม")
+      );
+
+    return isSameFaculty || isEngineeringGroup;
+  })
+  .sort(
+    (a: TCASItem, b: TCASItem) =>
+      Number(b.min_score) - Number(a.min_score)
+  );
+
+const lowerThanDream = sameFacultyPrograms.filter(
+  (item: TCASItem) =>
+    item.curriculum_id !== dreamProgram?.curriculum_id &&
+    Number(item.min_score) < Number(dreamProgram?.min_score || 999)
+);
+
+const targetPrograms = lowerThanDream.slice(0, 3);
+
+const safePrograms = lowerThanDream
+  .slice(3)
+  .filter(
+    (item: TCASItem) =>
+      !targetPrograms.some(
+        (t: TCASItem) => t.curriculum_id === item.curriculum_id
       )
-      .slice(0, 5);
+  )
+  .slice(0, 3);
+
+const selectedPrograms = [
+  ...(dreamProgram ? [{ ...dreamProgram, matchType: "dream" }] : []),
+  ...targetPrograms.map((item: TCASItem) => ({
+    ...item,
+    matchType: "target",
+  })),
+  ...safePrograms.map((item: TCASItem) => ({
+    ...item,
+    matchType: "safe",
+  })),
+];
+
+console.log("Selected Programs:", selectedPrograms);
 
       console.log("Search Keywords:", searchKeywords);
-      console.log("Matched Programs:", matchedPrograms);
 
       const response = await fetch("/api/advisor", {
         method: "POST",
@@ -202,7 +348,7 @@ export default function Home() {
           score,
           weakSubjects,
           remainingDays,
-          matchedPrograms,
+          matchedPrograms: selectedPrograms,
         }),
       });
 
